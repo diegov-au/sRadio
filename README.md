@@ -1,4 +1,4 @@
-# sRadio - Internet Radio
+# sRadio - Internet Radio Streaming App
 sRadio - Internet Radio Streaming app compatible with Android Auto
 
 sRadio is a no-nonsense online audio streaming app designed to stream music and explore live radio stations from all over the world. With more than 80,000 live streams available to explore there will never be a shortage of variety and best of all it's FREE!
