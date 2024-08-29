@@ -1,0 +1,1266 @@
+﻿using System;
+using System.IO;
+using System.Net;
+using Android.App;
+using Android.Content;
+using Android.Content.PM;
+using Android.OS;
+using Android.Runtime;
+using Android.Support.Design.Widget;
+using Android.Support.V4.Media;
+using Android.Support.V4.Media.Session;
+using Android.Support.V7.App;
+using Android.Views;
+using Android.Widget;
+using AndroidX.Media.App;
+using AndroidX.Core.App;
+using Com.Google.Android.Exoplayer2;
+using Com.Google.Android.Exoplayer2.Core;
+using Com.Google.Android.Exoplayer2.Ext.Mediasession;
+using Com.Google.Android.Exoplayer2.Extractor;
+using Com.Google.Android.Exoplayer2.Metadata;
+using Com.Google.Android.Exoplayer2.Metadata.Icy;
+using Com.Google.Android.Exoplayer2.Source;
+using Com.Google.Android.Exoplayer2.Trackselection;
+using Com.Google.Android.Exoplayer2.UI;
+using Com.Google.Android.Exoplayer2.Upstream;
+using Com.Google.Android.Exoplayer2.Util;
+using Com.Google.Android.Exoplayer2.Testutil;
+using Java.Lang;
+using AndroidX.Media.Session;
+using static AndroidX.Media.App.NotificationCompat;
+using System.Resources;
+using Android.Support.V4.Content;
+using Android.Graphics;
+using Java.Security;
+using Android.Media;
+using Android.Media.Session;
+using Android.Content.Res;
+using System.Collections;
+using Android.Views.Accessibility;
+using Action = System.Action;
+using System.Globalization;
+using System.Threading.Tasks;
+using MetaBrainz.MusicBrainz;
+using Org.Json;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+
+#nullable enable annotations
+
+namespace sRadio
+{
+   
+    [Activity(Label = "@string/app_name", Theme = "@style/AppTheme.NoActionBar", LaunchMode = LaunchMode.SingleTop, MainLauncher = true)]
+    public class MainActivity : AppCompatActivity
+    {
+
+        private SimpleExoPlayer player;
+        private PlayerControlView playerView;
+        private static MediaSessionCompat mediaSession;
+        //   private PlayerNotificationManager playerNotificationManager;
+        private MediaSessionConnector mediaSessionConnector;
+        private string mbOAuthClientID = "pJgWZTnefMbi-W1UUyDpw46-2TF1AlnR";
+        private string mbOAuthClientSecret = "5t4T4OEHZ8Z3OGn8We6bdp09LwdyY_xM";
+
+        string notificationChannelId = "sRadio";
+        Bitmap applicationIcon;
+        public long currentPosition;
+
+
+        private string AppID = "sRadio";
+
+
+       protected override void OnCreate(Bundle savedInstanceState)
+        {
+            base.OnCreate(savedInstanceState);
+            Xamarin.Essentials.Platform.Init(this, savedInstanceState);
+
+            applicationIcon = BitmapFactory.DecodeResource(Resources, Resource.Mipmap.ic_launcher_foreground);
+
+            ContextCompat.StartForegroundService(this,new Intent(this,typeof(AudioPlayerService)));;
+           
+
+            // StartForegroundService(new Intent(Application.Context, new MainActivity().Class));
+            SetContentView(Resource.Layout.main_activity);
+
+           // CreateNotificationChannel(); //required first to createnotification channel
+           // InitializeMediaSession(); //initializes media session
+           // InitializePlayer();  //creates player and assigns mediasession
+                                 // ShowMediaNotificatons(); //shows notifications which depends on initialized player
+           // PlayStream("http://ais-nzme.streamguys1.com/nz_008_aac");
+
+        }
+        protected override void OnStart()
+        {
+            base.OnStart();
+        /*/    InitializePlayer();
+        
+            if (mediaSession != null)
+            {
+                mediaSession.Active = true;
+            }*/
+        }
+
+        protected override void OnStop()
+        {
+            base.OnStop();
+           
+            /* if (mediaSession != null)
+            {
+                mediaSession.Active = false;
+            }
+
+            ShowMediaNotificatons();*/
+         
+
+        }
+
+        protected override void OnPause()
+        {
+            base.OnPause();
+            // Release();
+        }
+
+        protected override void OnDestroy()
+        {
+          /*  if (player != null)
+            {
+                mediaSession.Release();
+                mediaSessionConnector.Dispose();
+                player.Release();
+
+            }*/
+
+        
+
+            base.OnDestroy();
+        }
+
+        public override bool OnCreateOptionsMenu(IMenu menu)
+        {
+            MenuInflater.Inflate(Resource.Menu.menu_main, menu);
+            return true;
+        }
+
+        public override bool OnOptionsItemSelected(IMenuItem item)
+        {
+            int id = item.ItemId;
+            if (id == Resource.Id.action_settings)
+            {
+                return true;
+            }
+
+            return base.OnOptionsItemSelected(item);
+        }
+
+       public override void OnRequestPermissionsResult(int requestCode, string[] permissions, [GeneratedEnum] Android.Content.PM.Permission[] grantResults)
+        {
+            Xamarin.Essentials.Platform.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+
+            base.OnRequestPermissionsResult(requestCode, permissions, grantResults);
+        }
+        private void InitializePlayer()
+        {
+            if (player != null)
+                return;
+
+
+            player = new SimpleExoPlayer.Builder(this).Build();
+
+            //connected to Google Assistant
+            mediaSessionConnector = new MediaSessionConnector(mediaSession);
+            mediaSessionConnector.SetPlayer(player);
+
+            player.PlayWhenReady = true;
+
+            //wires up player outputs
+            player.AddListener(new PlayerEventListener(this));
+            player.AddMetadataOutput(new EventMetadataOuput(this));
+            player.SetHandleWakeLock(true);
+
+
+            //connects to player ui
+            playerView = (PlayerControlView)FindViewById(Resource.Id.local_player_view);
+            playerView.RequestFocus();
+            playerView.ShowTimeoutMs = -1;
+            playerView.Player = player;
+
+            var playerImage = FindViewById<ImageView>(Resource.Id.albumart);
+            playerImage.SetImageBitmap(applicationIcon);
+
+
+            //playerNotificationManager = new PlayerNotificationManager(this, "sRadio", 1, new MediaDescriptionAdapter(this));
+            //playerNotificationManager.SetPlayer(player);
+
+        }
+        private void InitializeMediaSession()
+        {
+
+            mediaSession = new MediaSessionCompat(ApplicationContext, AppID);
+
+          //  mediaSession.SetFlags(MediaSessionCompat.FlagHandlesMediaButtons | MediaSessionCompat.FlagHandlesTransportControls);
+            mediaSession.SetPlaybackState(new PlaybackStateCompat.Builder()
+              .SetState(PlaybackStateCompat.StatePlaying, 0, 0)
+              .SetActions(PlaybackStateCompat.ActionPlayPause | PlaybackStateCompat.ActionPause | PlaybackStateCompat.ActionPlay | PlaybackStateCompat.ActionStop)
+              .Build());
+
+            // mediaSession.SetMediaButtonReceiver();
+            mediaSession.SetCallback(new MediaSessionCallback(this));
+
+            mediaSession.Active = true;
+
+        }
+        public void Release()
+        {
+            player.Release();
+        }
+        private void PlayStream(string mediaUri)
+        {
+
+            var DataSourceFactory = new DefaultDataSourceFactory(this, AppID);
+            var mediaSource = new ProgressiveMediaSource.Factory(DataSourceFactory).CreateMediaSource(Android.Net.Uri.Parse(mediaUri));
+
+
+            player.Prepare(mediaSource);
+
+
+        }
+        public void ShowMediaNotificatons()
+        {
+
+            MediaDescriptionCompat description = mediaSession.Controller.Metadata.Description;
+            PendingIntent contentPendingIntent = PendingIntent.GetActivity(this, 0, new Intent(this, new MainActivity().Class), 0);
+
+            int playPauseIcon = 0;
+            string playPauseString;
+            bool showChronometer = true;
+            var content = new NotificationContent();
+
+            //validate metadata if its blank set the default values
+            if (description.Title == null)
+            {
+                content.Title = "Welcome To sRadio";
+                content.Subtitle = "sRadio";
+                content.Description = "sRadio";
+                content.IconBitmap = BitmapFactory.DecodeResource(Resources, Resource.Mipmap.ic_launcher_foreground);
+
+            }
+            else
+            {
+                content.Title = description.Title;
+                content.Subtitle = description.Subtitle;
+                content.Description = description.Description;
+                content.IconBitmap = description.IconBitmap;
+            }
+
+
+            if (player.IsPlaying)
+            {
+                playPauseIcon = Resource.Drawable.exo_icon_pause;
+                playPauseString = "pause";
+            }
+            else
+            {
+                playPauseIcon = Resource.Drawable.exo_icon_play;
+                playPauseString = "play";
+                showChronometer = false;
+            }
+
+            var playPauseAction = new AndroidX.Core.App.NotificationCompat.Action(playPauseIcon, playPauseString, MediaButtonReceiver.BuildMediaButtonPendingIntent(Application.Context, PlaybackStateCompat.ActionPlayPause));
+
+            var builder = new AndroidX.Core.App.NotificationCompat.Builder(Application.Context, notificationChannelId);
+            builder
+                .SetContentTitle(content.Title)
+                .SetContentText(content.Subtitle)
+                // .SetSubText(description.Description)
+                .SetLargeIcon(content.IconBitmap)
+
+                // Enable launching the player by clicking the notification
+                .SetContentIntent(contentPendingIntent)
+
+                // Stop the service when the notification is swiped away
+                .SetDeleteIntent(MediaButtonReceiver.BuildMediaButtonPendingIntent(Application.Context,
+                   PlaybackStateCompat.ActionStop))
+
+                // Make the transport controls visible on the lockscreen
+                .SetVisibility(AndroidX.Core.App.NotificationCompat.VisibilityPublic)
+
+                // Add an app icon and set its accent color
+                // Be careful about the color
+                .SetSmallIcon(Resource.Drawable.exo_icon_play)
+                .SetColor(ContextCompat.GetColor(ApplicationContext, Resource.Color.colorPrimaryDark))
+
+
+                // Add a pause button
+                .AddAction(playPauseAction)
+
+                // Add a stop button
+
+                .AddAction(new AndroidX.Core.App.NotificationCompat.Action(
+                  Resource.Drawable.exo_icon_stop, GetString(Resource.Drawable.exo_icon_stop),
+                  MediaButtonReceiver.BuildMediaButtonPendingIntent(Application.Context,
+                  PlaybackStateCompat.ActionStop)))
+
+                // Take advantage of MediaStyle features
+                .SetStyle(new MediaStyle()
+                .SetMediaSession(mediaSession.SessionToken)
+                .SetShowActionsInCompactView(0)
+
+                // Add a cancel button
+                .SetShowCancelButton(true)
+                .SetCancelButtonIntent(MediaButtonReceiver.BuildMediaButtonPendingIntent(ApplicationContext,
+                 PlaybackStateCompat.ActionStop)))
+
+                .SetWhen(JavaSystem.CurrentTimeMillis() - player.CurrentPosition)
+                .SetShowWhen(true)
+                .SetUsesChronometer(showChronometer);
+
+            // Display the notification and place the service in the foreground*/
+
+            Notification notification = builder.Build();
+            NotificationManagerCompat notificationManager = NotificationManagerCompat.From(this);
+
+            // notificationId is a unique int for each notification that you must define
+            notificationManager.Notify(0, builder.Build());
+        }
+        public void ShowMediaNotifications1()
+        {
+            /* playerNotificationManager = new PlayerNotificationManager(this, notificationChannelId, 1, new MediaDescriptionAdapter(this));
+             playerNotificationManager.SetFastForwardIncrementMs(0);
+             playerNotificationManager.SetRewindIncrementMs(0);
+             playerNotificationManager.SetColorized(true);
+             playerNotificationManager.SetColor(Resource.Color.colorPrimaryDark);
+             playerNotificationManager.SetMediaSessionToken(mediaSession.SessionToken);
+             playerNotificationManager.SetPlayer(player);*/
+        }
+        private void CreateNotificationChannel()
+        {
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+            {
+
+                NotificationManager notificationManager = (NotificationManager)Android.App.Application.Context.GetSystemService(Android.Content.Context.NotificationService);
+
+                ICharSequence channelName = new Java.Lang.String("sRadio");
+                var importance = NotificationImportance.Low;
+                string description = "Radio";
+                NotificationChannel notificationChannel = new NotificationChannel(notificationChannelId, channelName, importance);
+                notificationChannel.Description = description;
+                notificationChannel.LockscreenVisibility = NotificationVisibility.Public;
+                notificationManager.CreateNotificationChannel(notificationChannel);
+
+            }
+        }
+        public void UpdateTrackMetadata(string trackInfo)
+        {
+
+            string title, artist;
+
+            TextInfo myTI = new CultureInfo("en-US", false).TextInfo;
+            trackInfo = myTI.ToTitleCase(trackInfo.ToLower());
+
+            var metadataLabel = FindViewById<TextView>(Resource.Id.metadata);
+            metadataLabel.Text = trackInfo;
+
+            try
+            {
+                string[] trackInfoSplit = trackInfo.Split('-'); //ICY FORMAT artist(0) - title(1)
+
+                title = trackInfoSplit[1].TrimStart();
+                artist = trackInfoSplit[0].TrimEnd();
+            }
+            catch
+            {
+                title = "Live Radio";
+                artist = "sRadio";
+            }
+
+            SetSessionMetadata(title, artist, artist, null);
+            _ = GetTitleArtworkAsync(trackInfo);
+        }
+        private async Task GetTitleArtworkAsync(string trackInfo)
+
+        {
+            //trackInfo = "lady gaga - rain on me";
+           // trackInfo = "Justin Bieber / Chance The Rapper - Holy";
+            //get track id
+            Bitmap imageBitmap = null;
+            string jsonResultString = null;
+           
+            //query musicbrainz for track MBID
+            var q = new MetaBrainz.MusicBrainz.Query("sRadio", "1.0", "mailto: clubv@hotmail.com");
+            var release = await q.FindReleasesAsync(trackInfo);
+
+          
+            if (release.TotalResults == 0)
+                return;
+
+            var MBID = release.Results[0].Item.Id.ToString();
+
+
+            try
+            {
+                using (var webClient = new WebClient())
+                {
+                      jsonResultString = await webClient.DownloadStringTaskAsync(new System.Uri("http://coverartarchive.org/release/" + MBID));
+                 
+                    if (jsonResultString != null)
+                    {
+                        var jsonArray = JObject.Parse(jsonResultString);
+
+                        string artUrl = (string)jsonArray["images"][0]["image"];
+
+                        var imageBytes = await webClient.DownloadDataTaskAsync(new System.Uri(artUrl));
+
+                        if (imageBytes != null && imageBytes.Length > 0)
+                        {
+                            imageBitmap = BitmapFactory.DecodeByteArray(imageBytes, 0, imageBytes.Length);
+                        }
+                    }
+
+                }
+            } catch (WebException wex)
+            {
+               imageBitmap = applicationIcon; //if we cannot find album art we default to application logo
+            }
+
+            ImageView playerImage = FindViewById<ImageView>(Resource.Id.albumart);
+            playerImage.SetImageBitmap(imageBitmap);
+            
+            SetSessionMetadata(null, null, null, imageBitmap);
+            
+        }
+        void SetSessionMetadata(string? Title, string? Artist, string? Album, Bitmap? imageBitmap)
+        {
+
+
+            if (Title == null) // we've only passed the bitmap so lets keep existing string metadata in mediaSession
+            {
+                mediaSession.SetMetadata(new MediaMetadataCompat.Builder()
+               .PutString(MediaMetadataCompat.MetadataKeyTitle, mediaSession.Controller.Metadata.Description.Title)
+               .PutString(MediaMetadataCompat.MetadataKeyArtist, mediaSession.Controller.Metadata.Description.Subtitle) //using artist info in both artist and album metadatakeys
+               .PutString(MediaMetadataCompat.MetadataKeyAlbum, mediaSession.Controller.Metadata.Description.Subtitle)  //since streaming radio want provide album name
+               .PutBitmap(MediaMetadataCompat.MetadataKeyDisplayIcon, Bitmap.CreateScaledBitmap(imageBitmap, 256, 256, true))
+               .Build());
+
+
+            }
+            else
+            {
+
+                if (mediaSession.Controller.Metadata.Description.IconBitmap == null)
+                    imageBitmap = BitmapFactory.DecodeResource(Resources, Resource.Mipmap.ic_launcher_foreground);
+                else
+                    imageBitmap = mediaSession.Controller.Metadata.Description.IconBitmap;
+
+                mediaSession.SetMetadata(new MediaMetadataCompat.Builder()
+                 .PutString(MediaMetadataCompat.MetadataKeyTitle, Title)
+                 .PutString(MediaMetadataCompat.MetadataKeyArtist, Artist) //using artist info in both artist and album metadatakeys
+                 .PutString(MediaMetadataCompat.MetadataKeyAlbum, Title)  //since streaming radio want provide album name
+                 .PutBitmap(MediaMetadataCompat.MetadataKeyDisplayIcon, imageBitmap)
+                 .Build());
+            }
+
+            ShowMediaNotificatons();
+
+        }
+        public void UpdateTimeProgressStatus(object sender, System.Timers.ElapsedEventArgs e)
+        {
+
+
+
+            RunOnUiThread(() => currentPosition = player.CurrentPosition);
+
+            TimeSpan t = TimeSpan.FromMilliseconds(currentPosition + 1000);
+
+            string time = string.Format("{0:D2}:{1:D2}:{2:D2}",
+                                    t.Hours,
+                                    t.Minutes,
+                                    t.Seconds);
+
+
+            TextView timerLabel = (TextView)FindViewById(Resource.Id.title);
+            timerLabel.Text = time;
+        }
+        public struct NotificationContent
+        {
+            public string Title;
+            public string Subtitle;
+            public string Description;
+            public Bitmap IconBitmap;
+        }
+        public class EventMetadataOuput : Java.Lang.Object, IMetadataOutput
+        {
+            MainActivity activity;
+            public EventMetadataOuput(MainActivity activity)
+            {
+
+                this.activity = activity;
+                //Bring in any variables needed and implement the functions for the listener in this class
+            }
+
+            public void OnMetadata(Metadata metadata)
+            {
+                var trackInfo = "";
+
+                if (metadata.Length() > 0)
+                {
+                    for (int i = 0; i < metadata.Length(); i++)
+                    {
+                        Metadata.IEntry entry = metadata.Get(i);
+                        if (entry is IcyInfo)
+                        {
+                            var IcyInfo = (IcyInfo)entry;
+                            trackInfo = IcyInfo.Title;
+
+
+                        }
+                        if (entry is IcyHeaders)
+                        {
+                            var IcyHeaders = (IcyHeaders)entry;
+                            // trackInfo = IcyHeaders.Name;
+                        }
+                    }
+                }
+
+                if (trackInfo == " " || trackInfo == "")
+                    trackInfo = "Live Radio";
+
+                activity.UpdateTrackMetadata(trackInfo);
+            }
+
+            /* try {
+                //trim and extract song title
+                trackInfo = trackInfo.Remove(0, trackInfo.IndexOf("title="));
+                trackInfo = trackInfo.Replace("title=\"", "");
+
+                trackInfo = trackInfo.Remove(trackInfo.IndexOf('\"', 0), trackInfo.Length - trackInfo.IndexOf('\"'));
+
+                //check to see if we have any track info if not set tracikinfo to live radio
+                } catch {
+                    trackInfo = "Live Radio";
+                }
+
+            if (trackInfo == " " || trackInfo == "")
+                trackInfo = "Live Radio";
+
+
+            metadataLabel.Text = trackInfo;
+        }*/
+
+        }
+        public class PlayerEventListener : Java.Lang.Object, IPlayerEventListener
+        {
+            MainActivity activity;
+            public PlayerEventListener(MainActivity activity)
+            {
+
+                this.activity = activity;
+                //Bring in any variables needed and implement the functions for the listener in this class
+            }
+
+            public void OnLoadingChanged(bool p0) { }
+
+            public void OnPlayerError(ExoPlaybackException p0) { }
+
+            public void OnPlayerStateChanged(bool playWhenReady, int playbackState)
+            {
+                var titleLabel = activity.FindViewById<TextView>(Resource.Id.state);
+
+                if (playbackState == IPlayer.StateBuffering)
+                {
+                    titleLabel.Text = "Buffering";
+                }
+
+              //  activity.ShowMediaNotificatons();
+
+            }
+
+            public void OnPositionDiscontinuity() { }
+
+            public void OnIsPlayingChanged(bool isPlaying)
+            {
+                var titleLabel = activity.FindViewById<TextView>(Resource.Id.state);
+                if (isPlaying)
+                {
+                    titleLabel.Text = "Playing...";
+                }
+                else
+                    titleLabel.Text = "Stopped";
+
+                activity.ShowMediaNotificatons();
+            }
+
+            public void OnTimelineChanged(Timeline p0, int p1) {
+
+                
+               
+            }
+
+            public void OnTracksChanged(TrackGroupArray p0, TrackSelectionArray p1)
+            {
+
+
+            }
+        }
+        public class MediaSessionCallback : MediaSessionCompat.Callback
+        {
+
+            MainActivity activity;
+
+            public MediaSessionCallback(MainActivity activity)
+            {
+                this.activity = activity;
+            }
+
+            public override bool OnMediaButtonEvent(Intent mediaButtonEvent)
+            {
+                string intentAction = mediaButtonEvent.Action;
+
+                if (Intent.ActionMediaButton.Equals(intentAction))
+                {
+                    KeyEvent keyEvent = (KeyEvent)mediaButtonEvent.GetParcelableExtra(Intent.ExtraKeyEvent);
+                    if (keyEvent == null)
+                        return base.OnMediaButtonEvent(mediaButtonEvent);
+
+                    var keyCode = keyEvent.KeyCode;
+                    var action = keyEvent.Action;
+
+                    if (keyEvent.RepeatCount == 0 && action == KeyEventActions.Down)
+                    {
+                        switch (keyCode)
+                        {
+                            // Do what you want in here
+                            case Keycode.MediaStop:
+                                activity.player.PlayWhenReady = false;
+                                break;
+                            case Keycode.MediaPause:
+                                activity.player.PlayWhenReady = false;
+                                break;
+                            case Keycode.MediaPlay:
+                                activity.player.PlayWhenReady = true;
+                                break;
+                            case Keycode.MediaPlayPause:
+                                if (activity.player.IsPlaying)
+                                activity.player.PlayWhenReady = false;
+                                else
+                                activity.player.PlayWhenReady = true;
+                                break;
+                        }
+                    }
+
+                }
+
+                activity.ShowMediaNotificatons();
+                return base.OnMediaButtonEvent(mediaButtonEvent);
+            }
+
+       }
+        public class MediaDescriptionAdapter : Java.Lang.Object, PlayerNotificationManager.IMediaDescriptionAdapter
+        {
+            MainActivity activity;
+            public MediaDescriptionAdapter(MainActivity activity)
+            {
+                this.activity = activity;
+            }
+
+            public PendingIntent CreateCurrentContentIntent(IPlayer p0)
+            {
+
+
+                Intent intent = new Intent(Application.Context, new MainActivity().Class);
+                return PendingIntent.GetActivity(Application.Context, 0, intent, PendingIntentFlags.UpdateCurrent);
+            }
+
+            ICharSequence PlayerNotificationManager.IMediaDescriptionAdapter.GetCurrentContentTextFormatted(IPlayer p0)
+            {
+                ICharSequence Text = new Java.Lang.String(mediaSession.Controller.Metadata.Description.Description);
+                return Text;
+            }
+
+            ICharSequence PlayerNotificationManager.IMediaDescriptionAdapter.GetCurrentContentTitleFormatted(IPlayer p0)
+            {
+                ICharSequence Title = new Java.Lang.String(mediaSession.Controller.Metadata.Description.Title);
+                return Title;
+            }
+            ICharSequence PlayerNotificationManager.IMediaDescriptionAdapter.GetCurrentSubTextFormatted(IPlayer p0)
+            {
+                ICharSequence subText = new Java.Lang.String(mediaSession.Controller.Metadata.Description.Subtitle);
+                return subText;
+            }
+            public Bitmap GetCurrentLargeIcon(IPlayer p0, PlayerNotificationManager.BitmapCallback p1)
+            {
+                Bitmap bitmap = BitmapFactory.DecodeResource(activity.Resources, Resource.Mipmap.ic_launcher_foreground);
+                return bitmap;
+
+            }
+
+
+        }
+
+
+    }
+
+    [Service]
+    public class AudioPlayerService : Service
+    {
+
+        private SimpleExoPlayer player;
+        private PlayerControlView playerView;
+        private static MediaSessionCompat mediaSession;
+        private MediaSessionConnector mediaSessionConnector;
+        private string mbOAuthClientID = "pJgWZTnefMbi-W1UUyDpw46-2TF1AlnR";
+        private string mbOAuthClientSecret = "5t4T4OEHZ8Z3OGn8We6bdp09LwdyY_xM";
+
+        string notificationChannelId = "sRadio";
+        Bitmap applicationIcon;
+        public long currentPosition;
+
+        private string AppID = "sRadio";
+        public AudioPlayerService()
+        {
+        }
+
+        public override IBinder OnBind(Intent intent)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override void OnCreate()
+        {
+
+
+            applicationIcon = BitmapFactory.DecodeResource(Resources, Resource.Mipmap.ic_launcher_foreground);
+
+            CreateNotificationChannel(); //required first to createnotification channel
+
+            InitializeMediaSession(); //initializes media session
+            InitializePlayer();  //creates player and assigns mediasession
+            // ShowMediaNotificatons(); //shows notifications which depends on initialized player
+        
+            var notification = new Notification.Builder(Application.Context, notificationChannelId);
+
+            notification
+                .SetContentTitle("Welcome to sRadio")
+                .SetContentText("sRadio")
+                .SetSmallIcon(Resource.Drawable.exo_icon_play)
+                .SetColor(ContextCompat.GetColor(ApplicationContext, Resource.Color.colorPrimaryDark));
+
+
+            StartForeground(1, notification.Build());
+
+            PlayStream("http://ais-nzme.streamguys1.com/nz_008_aac");
+        }
+
+        [return: GeneratedEnum]
+        public override StartCommandResult OnStartCommand(Intent intent, [GeneratedEnum] StartCommandFlags flags, int startId)
+        {
+
+            return StartCommandResult.Sticky;
+          //  return base.OnStartCommand(intent, flags, startId);
+        }
+
+        private void CreateNotificationChannel()
+        {
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
+            {
+
+                NotificationManager notificationManager = (NotificationManager)Android.App.Application.Context.GetSystemService(Android.Content.Context.NotificationService);
+
+                ICharSequence channelName = new Java.Lang.String("sRadio");
+                var importance = NotificationImportance.Low;
+                string description = "Radio";
+                NotificationChannel notificationChannel = new NotificationChannel(notificationChannelId, channelName, importance);
+                notificationChannel.Description = description;
+                notificationChannel.LockscreenVisibility = NotificationVisibility.Public;
+                notificationManager.CreateNotificationChannel(notificationChannel);
+
+            }
+        }
+        private void InitializeMediaSession()
+        {
+
+            mediaSession = new MediaSessionCompat(ApplicationContext, AppID);
+
+            //  mediaSession.SetFlags(MediaSessionCompat.FlagHandlesMediaButtons | MediaSessionCompat.FlagHandlesTransportControls);
+            mediaSession.SetPlaybackState(new PlaybackStateCompat.Builder()
+              .SetState(PlaybackStateCompat.StatePlaying, 0, 0)
+              .SetActions(PlaybackStateCompat.ActionPlayPause | PlaybackStateCompat.ActionPause | PlaybackStateCompat.ActionPlay | PlaybackStateCompat.ActionStop)
+              .Build());
+
+            // mediaSession.SetMediaButtonReceiver();
+            mediaSession.SetCallback(new MediaSessionCallback(this));
+
+            mediaSession.Active = true;
+
+        }
+        private void InitializePlayer()
+        {
+            if (player != null)
+                return;
+
+
+            player = new SimpleExoPlayer.Builder(this).Build();
+
+            //connected to Google Assistant
+            mediaSessionConnector = new MediaSessionConnector(mediaSession);
+            mediaSessionConnector.SetPlayer(player);
+
+            player.PlayWhenReady = true;
+
+            //wires up player outputs
+            player.AddListener(new PlayerEventListener(this));
+            player.AddMetadataOutput(new EventMetadataOuput(this));
+            player.SetHandleWakeLock(true);
+
+            /*
+            //connects to player ui
+            playerView = (PlayerControlView)FindViewById(Resource.Id.local_player_view);
+            playerView.RequestFocus();
+            playerView.ShowTimeoutMs = -1;
+            playerView.Player = player;
+
+         
+            var playerImage = FindViewById<ImageView>(Resource.Id.albumart);
+            playerImage.SetImageBitmap(applicationIcon);
+           */
+
+
+            //playerNotificationManager = new PlayerNotificationManager(this, "sRadio", 1, new MediaDescriptionAdapter(this));
+            //playerNotificationManager.SetPlayer(player);
+
+        }
+        private void PlayStream(string mediaUri)
+        {
+
+            var DataSourceFactory = new DefaultDataSourceFactory(this, AppID);
+            var mediaSource = new ProgressiveMediaSource.Factory(DataSourceFactory).CreateMediaSource(Android.Net.Uri.Parse(mediaUri));
+
+
+            player.Prepare(mediaSource);
+
+
+        }
+        
+        //BUG IN LATECNY TO CHANGE PLAY PAUSE
+        public void ShowMediaNotificatons()
+        {
+
+            MediaDescriptionCompat description = mediaSession.Controller.Metadata.Description;
+            PendingIntent contentPendingIntent = PendingIntent.GetActivity(this, 0, new Intent(this, new MainActivity().Class), 0);
+
+            int playPauseIcon = 0;
+            string playPauseString;
+            bool showChronometer = true;
+            var content = new NotificationContent();
+
+            //validate metadata if its blank set the default values
+            if (description.Title == null)
+            {
+                content.Title = "Welcome To sRadio";
+                content.Subtitle = "sRadio";
+                content.Description = "sRadio";
+                content.IconBitmap = BitmapFactory.DecodeResource(Resources, Resource.Mipmap.ic_launcher_foreground);
+
+            }
+            else
+            {
+                content.Title = description.Title;
+                content.Subtitle = description.Subtitle;
+                content.Description = description.Description;
+                content.IconBitmap = description.IconBitmap;
+            }
+
+
+            //BUG CREATES LATENCY IN SHOW PLAY
+
+
+            if (player.IsPlaying)
+            {
+                playPauseIcon = Resource.Drawable.exo_icon_pause;
+                playPauseString = "pause";
+            }
+            else
+            {
+                playPauseIcon = Resource.Drawable.exo_icon_play;
+                playPauseString = "play";
+                showChronometer = false;
+            }
+
+            var playPauseAction = new AndroidX.Core.App.NotificationCompat.Action(playPauseIcon, playPauseString, MediaButtonReceiver.BuildMediaButtonPendingIntent(Application.Context, PlaybackStateCompat.ActionPlayPause));
+
+            var builder = new AndroidX.Core.App.NotificationCompat.Builder(Application.Context, notificationChannelId);
+            builder
+                .SetContentTitle(content.Title)
+                .SetContentText(content.Subtitle)
+                // .SetSubText(description.Description)
+                .SetLargeIcon(content.IconBitmap)
+
+                // Enable launching the player by clicking the notification
+                .SetContentIntent(contentPendingIntent)
+
+                // Stop the service when the notification is swiped away
+                .SetDeleteIntent(MediaButtonReceiver.BuildMediaButtonPendingIntent(Application.Context,
+                   PlaybackStateCompat.ActionStop))
+
+                // Make the transport controls visible on the lockscreen
+                .SetVisibility(AndroidX.Core.App.NotificationCompat.VisibilityPublic)
+
+                // Add an app icon and set its accent color
+                // Be careful about the color
+                .SetSmallIcon(Resource.Drawable.exo_icon_play)
+                .SetColor(ContextCompat.GetColor(ApplicationContext, Resource.Color.colorPrimaryDark))
+
+
+                // Add a pause button
+                .AddAction(playPauseAction)
+
+                // Add a stop button
+
+                .AddAction(new AndroidX.Core.App.NotificationCompat.Action(
+                  Resource.Drawable.exo_icon_stop, GetString(Resource.Drawable.exo_icon_stop),
+                  MediaButtonReceiver.BuildMediaButtonPendingIntent(Application.Context,
+                  PlaybackStateCompat.ActionStop)))
+
+                // Take advantage of MediaStyle features
+                .SetStyle(new MediaStyle()
+                .SetMediaSession(mediaSession.SessionToken)
+                .SetShowActionsInCompactView(0)
+
+                // Add a cancel button
+                .SetShowCancelButton(true)
+                .SetCancelButtonIntent(MediaButtonReceiver.BuildMediaButtonPendingIntent(ApplicationContext,
+                 PlaybackStateCompat.ActionStop)))
+
+                .SetWhen(JavaSystem.CurrentTimeMillis() - player.CurrentPosition)
+                .SetShowWhen(true)
+                .SetUsesChronometer(showChronometer);
+
+            // Display the notification and place the service in the foreground*/
+
+            Notification notification = builder.Build();
+            NotificationManagerCompat notificationManager = NotificationManagerCompat.From(this);
+
+            // notificationId is a unique int for each notification that you must define
+            notificationManager.Notify(1, builder.Build());
+        } 
+        void SetSessionMetadata(string? Title, string? Artist, string? Album, Bitmap? imageBitmap)
+        {
+
+
+            if (Title == null) // we've only passed the bitmap so lets keep existing string metadata in mediaSession
+            {
+                mediaSession.SetMetadata(new MediaMetadataCompat.Builder()
+               .PutString(MediaMetadataCompat.MetadataKeyTitle, mediaSession.Controller.Metadata.Description.Title)
+               .PutString(MediaMetadataCompat.MetadataKeyArtist, mediaSession.Controller.Metadata.Description.Subtitle) //using artist info in both artist and album metadatakeys
+               .PutString(MediaMetadataCompat.MetadataKeyAlbum, mediaSession.Controller.Metadata.Description.Subtitle)  //since streaming radio want provide album name
+               .PutBitmap(MediaMetadataCompat.MetadataKeyDisplayIcon, Bitmap.CreateScaledBitmap(imageBitmap, 256, 256, true))
+               .Build());
+
+
+            }
+            else
+            {
+
+                if (mediaSession.Controller.Metadata.Description.IconBitmap == null)
+                    imageBitmap = BitmapFactory.DecodeResource(Resources, Resource.Mipmap.ic_launcher_foreground);
+                else
+                    imageBitmap = mediaSession.Controller.Metadata.Description.IconBitmap;
+
+                mediaSession.SetMetadata(new MediaMetadataCompat.Builder()
+                 .PutString(MediaMetadataCompat.MetadataKeyTitle, Title)
+                 .PutString(MediaMetadataCompat.MetadataKeyArtist, Artist) //using artist info in both artist and album metadatakeys
+                 .PutString(MediaMetadataCompat.MetadataKeyAlbum, Title)  //since streaming radio want provide album name
+                 .PutBitmap(MediaMetadataCompat.MetadataKeyDisplayIcon, imageBitmap)
+                 .Build());
+            }
+
+            ShowMediaNotificatons();
+
+        }
+        public void UpdateTrackMetadata(string trackInfo)
+        {
+
+            string title, artist;
+
+            TextInfo myTI = new CultureInfo("en-US", false).TextInfo;
+            trackInfo = myTI.ToTitleCase(trackInfo.ToLower());
+
+           /* var metadataLabel = FindViewById<TextView>(Resource.Id.metadata);
+            metadataLabel.Text = trackInfo;*/
+
+            try
+            {
+                string[] trackInfoSplit = trackInfo.Split('-'); //ICY FORMAT artist(0) - title(1)
+
+                title = trackInfoSplit[1].TrimStart();
+                artist = trackInfoSplit[0].TrimEnd();
+            }
+            catch
+            {
+                title = "Live Radio";
+                artist = "sRadio";
+            }
+
+            SetSessionMetadata(title, artist, artist, null);
+            _ = GetTitleArtworkAsync(trackInfo);
+        }
+        private async Task GetTitleArtworkAsync(string trackInfo)
+
+        {
+            //trackInfo = "lady gaga - rain on me";
+            // trackInfo = "Justin Bieber / Chance The Rapper - Holy";
+            //get track id
+            Bitmap imageBitmap = null;
+            string jsonResultString = null;
+
+            //query musicbrainz for track MBID
+            var q = new MetaBrainz.MusicBrainz.Query("sRadio", "1.0", "mailto: clubv@hotmail.com");
+            var release = await q.FindReleasesAsync(trackInfo);
+
+
+            if (release.TotalResults == 0)
+                return;
+
+            var MBID = release.Results[0].Item.Id.ToString();
+
+
+            try
+            {
+                using (var webClient = new WebClient())
+                {
+                    jsonResultString = await webClient.DownloadStringTaskAsync(new System.Uri("http://coverartarchive.org/release/" + MBID));
+
+                    if (jsonResultString != null)
+                    {
+                        var jsonArray = JObject.Parse(jsonResultString);
+
+                        string artUrl = (string)jsonArray["images"][0]["image"];
+
+                        var imageBytes = await webClient.DownloadDataTaskAsync(new System.Uri(artUrl));
+
+                        if (imageBytes != null && imageBytes.Length > 0)
+                        {
+                            imageBitmap = BitmapFactory.DecodeByteArray(imageBytes, 0, imageBytes.Length);
+                        }
+                    }
+
+                }
+            }
+            catch (WebException wex)
+            {
+                imageBitmap = applicationIcon; //if we cannot find album art we default to application logo
+            }
+
+           /* ImageView playerImage = FindViewById<ImageView>(Resource.Id.albumart);
+            playerImage.SetImageBitmap(imageBitmap);*/
+
+            SetSessionMetadata(null, null, null, imageBitmap);
+
+        }
+        public struct NotificationContent
+        {
+            public string Title;
+            public string Subtitle;
+            public string Description;
+            public Bitmap IconBitmap;
+        }
+        public class MediaSessionCallback : MediaSessionCompat.Callback
+        {
+
+            AudioPlayerService activity;
+
+            public MediaSessionCallback(AudioPlayerService activity)
+            {
+                this.activity = activity;
+            }
+
+            public override bool OnMediaButtonEvent(Intent mediaButtonEvent)
+            {
+                string intentAction = mediaButtonEvent.Action;
+
+                if (Intent.ActionMediaButton.Equals(intentAction))
+                {
+                    KeyEvent keyEvent = (KeyEvent)mediaButtonEvent.GetParcelableExtra(Intent.ExtraKeyEvent);
+                    if (keyEvent == null)
+                        return base.OnMediaButtonEvent(mediaButtonEvent);
+
+                    var keyCode = keyEvent.KeyCode;
+                    var action = keyEvent.Action;
+
+                    if (keyEvent.RepeatCount == 0 && action == KeyEventActions.Down)
+                    {
+                        switch (keyCode)
+                        {
+                            // Do what you want in here
+                            case Keycode.MediaStop:
+                                activity.player.PlayWhenReady = false;
+                                break;
+                            case Keycode.MediaPause:
+                                activity.player.PlayWhenReady = false;
+                                break;
+                            case Keycode.MediaPlay:
+                                activity.player.PlayWhenReady = true;
+                                break;
+                            case Keycode.MediaPlayPause:
+                                if (activity.player.IsPlaying)
+                                    activity.player.PlayWhenReady = false;
+                                else
+                                    activity.player.PlayWhenReady = true;
+                                break;
+                        }
+                    }
+                }
+                activity.ShowMediaNotificatons();
+                return base.OnMediaButtonEvent(mediaButtonEvent);
+            }
+
+        }
+        public class EventMetadataOuput : Java.Lang.Object, IMetadataOutput
+        {
+            AudioPlayerService activity;
+            public EventMetadataOuput(AudioPlayerService activity)
+            {
+
+                this.activity = activity;
+                //Bring in any variables needed and implement the functions for the listener in this class
+            }
+
+            public void OnMetadata(Metadata metadata)
+            {
+                var trackInfo = "";
+
+                if (metadata.Length() > 0)
+                {
+                    for (int i = 0; i < metadata.Length(); i++)
+                    {
+                        Metadata.IEntry entry = metadata.Get(i);
+                        if (entry is IcyInfo)
+                        {
+                            var IcyInfo = (IcyInfo)entry;
+                            trackInfo = IcyInfo.Title;
+
+
+                        }
+                        if (entry is IcyHeaders)
+                        {
+                            var IcyHeaders = (IcyHeaders)entry;
+                            // trackInfo = IcyHeaders.Name;
+                        }
+                    }
+                }
+
+                if (trackInfo == " " || trackInfo == "")
+                    trackInfo = "Live Radio";
+
+                activity.UpdateTrackMetadata(trackInfo);
+            }
+
+            /* try {
+                //trim and extract song title
+                trackInfo = trackInfo.Remove(0, trackInfo.IndexOf("title="));
+                trackInfo = trackInfo.Replace("title=\"", "");
+
+                trackInfo = trackInfo.Remove(trackInfo.IndexOf('\"', 0), trackInfo.Length - trackInfo.IndexOf('\"'));
+
+                //check to see if we have any track info if not set tracikinfo to live radio
+                } catch {
+                    trackInfo = "Live Radio";
+                }
+
+            if (trackInfo == " " || trackInfo == "")
+                trackInfo = "Live Radio";
+
+
+            metadataLabel.Text = trackInfo;
+        }*/
+
+        }
+        public class PlayerEventListener : Java.Lang.Object, IPlayerEventListener
+        {
+            AudioPlayerService activity;
+            public PlayerEventListener(AudioPlayerService activity)
+            {
+
+                this.activity = activity;
+                //Bring in any variables needed and implement the functions for the listener in this class
+            }
+
+            public void OnLoadingChanged(bool p0) { }
+
+            public void OnPlayerError(ExoPlaybackException p0) { }
+
+            public void OnPlayerStateChanged(bool playWhenReady, int playbackState)
+            {
+              //  var titleLabel = activity.FindViewById<TextView>(Resource.Id.state);
+
+                if (playbackState == IPlayer.StateBuffering)
+                {
+                //    titleLabel.Text = "Buffering";
+                }
+
+                //  activity.ShowMediaNotificatons();
+
+            }
+
+            public void OnPositionDiscontinuity() { }
+
+            public void OnIsPlayingChanged(bool isPlaying)
+            {
+              //  var titleLabel = activity.FindViewById<TextView>(Resource.Id.state);
+                if (isPlaying)
+                {
+                //    titleLabel.Text = "Playing...";
+                }
+                else
+                  //  titleLabel.Text = "Stopped";
+
+                activity.ShowMediaNotificatons();
+            }
+
+            public void OnTimelineChanged(Timeline p0, int p1)
+            {
+
+
+
+            }
+
+            public void OnTracksChanged(TrackGroupArray p0, TrackSelectionArray p1)
+            {
+
+
+            }
+        }
+
+        [BroadcastReceiver(Enabled = true, Exported = false, Name = "com.diegoviso.sRadio.MyReciever")]
+        public class MyReciever : BroadcastReceiver
+        {
+
+            public MyReciever()
+            {
+
+            }
+            public override void OnReceive(Context context, Intent intent)
+            {
+
+                MediaButtonReceiver.HandleIntent(mediaSession, intent);
+            }
+        }
+
+
+    }
+
+   
+}
+
+     
+
+      
+
+
+
+
+
+
+
+
